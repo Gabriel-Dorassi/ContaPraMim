@@ -261,7 +261,7 @@ function renderTotais() {
   const mediaDiaria = totalSaidas / daysInMonth(m, y);
 
   const byCat = {};
-  txs.filter(tx => tx.type === 'saida' || tx.type === 'cartao').forEach(tx => {
+  txs.filter(tx => (tx.type === 'saida' || tx.type === 'cartao') && !tx.isEconomia).forEach(tx => {
     const tid = tx.tagId || 't8';
     byCat[tid] = (byCat[tid] || 0) + tx.amount;
   });
@@ -520,7 +520,7 @@ function renderHorizonte() {
       const saldo = saldosCache[monthKey(mm, yy)][ds]?.saldo;
       if (!saldo) { tbody += '<td class="zero">0</td>'; return; }
       const cls = saldo > 0 ? 'pos' : 'neg';
-      const abbr = Math.abs(saldo) >= 1000 ? (saldo/1000).toFixed(1)+'K' : Math.round(saldo).toString();
+      const abbr = Math.abs(saldo) >= 1000 ? (Math.abs(saldo)/1000).toFixed(1)+'K' : Math.abs(Math.round(saldo)).toString();
       tbody += `<td class="${cls}">${saldo<0?'-':''}${abbr}</td>`;
     });
     tbody += '</tr>';
