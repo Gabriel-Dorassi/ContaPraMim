@@ -749,10 +749,45 @@ function saveTransaction() {
   };
 
   if (state.editingId) {
+    const oldTx = state.data.transactions.find(t => t.id === state.editingId);
+    // Remover parcelas antigas do mesmo grupo (se houver)
+    if (oldTx && oldTx.groupId) {
+      state.data.transactions = state.data.transactions.filter(t =>
+        t.groupId !== oldTx.groupId || t.id === state.editingId
+      );
+    }
+    // Atualizar a transação editada
     const idx = state.data.transactions.findIndex(t => t.id === state.editingId);
     if (idx !== -1) state.data.transactions[idx] = { ...baseTx, id: state.editingId };
+    // Se recorrente, gerar as parcelas futuras (a partir da parcela 2)
+    if (isRecurring && installments > 1) {
+      const [yyyy, mm, dd] = date.split('-').map(Number);
+      for (let i = 1; i < installments; i++) {
+        let futMM = mm - 1 + i;
+        let futYY = yyyy + Math.floor(futMM / 12);
+        futMM = futMM % 12;
+        const futDD = Math.min(dd, daysInMonth(futMM, futYY));
+        const futDate = dateStr(futYY, futMM, futDD);
+        const desc = baseDesc ? `${baseDesc} (${i+1}/${isSemFim?'∞':installments})` : baseDesc;
+        state.data.transactions.push({
+          ...baseTx,
+          id: uniqueId(),
+          date: futDate,
+          vencimento: isCartao ? futDate : null,
+          installmentNum: i + 1,
+          description: desc,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      // Atualizar a primeira parcela com a descrição correta
+      const firstIdx = state.data.transactions.findIndex(t => t.id === state.editingId);
+      if (firstIdx !== -1) {
+        state.data.transactions[firstIdx].description = baseDesc ? `${baseDesc} (1/${isSemFim?'∞':installments})` : baseDesc;
+        state.data.transactions[firstIdx].groupId = groupId;
+      }
+    }
   } else {
-    // Gera parcelas
+    // Gera parcelas (nova transação)
     const total = isRecurring ? installments : 1;
     const [yyyy, mm, dd] = date.split('-').map(Number);
     for (let i = 0; i < total; i++) {
