@@ -71,7 +71,12 @@ function formatBRL(val) {
 }
 function parseBRL(str) {
   if (!str) return 0;
-  return parseFloat(str.replace(/[^\d,]/g, '').replace(',', '.')) || 0;
+  // Aceita: "1.500,99" | "1500,99" | "1500.99" | "1500"
+  const s = str
+    .replace(/[^\d.,]/g, '')   // só dígitos, ponto e vírgula
+    .replace(/\.(\d{3})/g, '$1') // remove pontos de milhar (ex: 1.500 → 1500)
+    .replace(',', '.');          // vírgula decimal → ponto
+  return parseFloat(s) || 0;
 }
 const monthKey  = (m, y) => `${y}-${String(m+1).padStart(2,'0')}`;
 const todayStr  = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
@@ -922,11 +927,23 @@ function setupEvents() {
   // Tags
   document.getElementById('btnAddTag').addEventListener('click', openAddTagModal);
 
-  // Amount input: format as currency
+  // Amount input: aceita valor direto (ex: 2000 = R$2.000,00)
   document.getElementById('amountInput').addEventListener('input', function() {
-    let val = this.value.replace(/[^\d]/g, '');
-    if (!val) { this.value = ''; return; }
-    this.value = (parseInt(val) / 100).toFixed(2).replace('.', ',');
+    // Remove tudo exceto dígitos e vírgula
+    let val = this.value.replace(/[^\d,]/g, '');
+    this.value = val;
+  });
+  document.getElementById('amountInput').addEventListener('blur', function() {
+    const n = parseBRL(this.value);
+    if (n > 0) {
+      // Formata com 2 casas decimais ao sair do campo
+      this.value = n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+  });
+  document.getElementById('amountInput').addEventListener('focus', function() {
+    // Remove formatação ao entrar no campo para facilitar edição
+    const n = parseBRL(this.value);
+    this.value = n > 0 ? String(n).replace('.', ',') : '';
   });
 
   document.addEventListener('keydown', e => {
