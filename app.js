@@ -105,7 +105,8 @@ function getInitialBalance(m, y) {
   state.data.transactions
     .filter(tx => tx.date.startsWith(monthKey(prevM, prevY)))
     .forEach(tx => {
-      if (tx.type === 'entrada') saldo += tx.amount;
+      if (tx.isEconomia) saldo -= tx.amount;
+      else if (tx.type === 'entrada') saldo += tx.amount;
       else if (tx.type === 'saida' || tx.type === 'cartao') saldo -= tx.amount;
     });
   return saldo;
@@ -117,14 +118,15 @@ function computeDaySaldos(m, y) {
   for (let d = 1; d <= daysInMonth(m, y); d++) {
     const ds = dateStr(y, m, d);
     const txs = getTxForDay(ds);
-    let entradas = 0, saidas = 0, cartao = 0;
+    let entradas = 0, saidas = 0, cartao = 0, economia = 0;
     txs.forEach(tx => {
-      if (tx.type === 'entrada') entradas += tx.amount;
+      if (tx.isEconomia) { economia += tx.amount; }
+      else if (tx.type === 'entrada') entradas += tx.amount;
       else if (tx.type === 'saida') saidas += tx.amount;
       else if (tx.type === 'cartao') cartao += tx.amount;
     });
-    saldo += entradas - saidas - cartao;
-    result[ds] = { saldo, entradas, saidas, cartao, txs };
+    saldo += entradas - saidas - cartao - economia;
+    result[ds] = { saldo, entradas, saidas, cartao, economia, txs };
   }
   return result;
 }
@@ -202,6 +204,7 @@ function renderSaldos() {
       case 'entradas': midVal = info.entradas; midClass = midVal > 0 ? 'mid-entrada' : ''; break;
       case 'cartao':   midVal = info.cartao;   midClass = midVal > 0 ? 'mid-cartao' : ''; break;
       case 'diarios':  midVal = previsaoDia;   midClass = 'mid-diario'; break;
+      case 'economia': midVal = info.economia; midClass = midVal > 0 ? 'mid-economia' : ''; break;
     }
     const midStr = midVal > 0 ? formatBRL(midVal) : 'R$ 0,00';
 
@@ -232,8 +235,8 @@ function updateColHeader() {
   const { colMode } = state;
   const dot = document.getElementById('colMidDot');
   const label = document.getElementById('colMidLabel');
-  const colors = { saidas: 'var(--red)', entradas: 'var(--green)', diarios: 'var(--accent)', cartao: 'var(--purple)' };
-  const labels = { saidas: 'Saídas', entradas: 'Entradas', diarios: 'Diários', cartao: 'Cartão' };
+  const colors = { saidas: 'var(--red)', entradas: 'var(--green)', diarios: 'var(--accent)', cartao: 'var(--purple)', economia: 'var(--economia)' };
+  const labels = { saidas: 'Saídas', entradas: 'Entradas', diarios: 'Diários', cartao: 'Cartão', economia: 'Economia' };
   if (dot) dot.style.background = colors[colMode] || 'var(--gray-400)';
   if (label) label.textContent = labels[colMode] || colMode;
 }
@@ -243,14 +246,15 @@ function renderTotais() {
   const { currentMonth: m, currentYear: y } = state;
   document.getElementById('monthLabelTotais').textContent = `${MONTHS_PT[m]}/${String(y).slice(2)}`;
   const txs = getTxForMonth(m, y);
-  let totalE = 0, totalS = 0, totalC = 0;
+  let totalE = 0, totalS = 0, totalC = 0, totalEco = 0;
   txs.forEach(tx => {
-    if (tx.type === 'entrada') totalE += tx.amount;
+    if (tx.isEconomia) totalEco += tx.amount;
+    else if (tx.type === 'entrada') totalE += tx.amount;
     else if (tx.type === 'saida') totalS += tx.amount;
     else if (tx.type === 'cartao') totalC += tx.amount;
   });
   const totalSaidas = totalS + totalC;
-  const saldoFinal = getInitialBalance(m, y) + totalE - totalSaidas;
+  const saldoFinal = getInitialBalance(m, y) + totalE - totalSaidas - totalEco;
   const mediaDiaria = totalSaidas / daysInMonth(m, y);
 
   const byCat = {};
@@ -269,6 +273,7 @@ function renderTotais() {
       <div class="totais-row"><span class="totais-row-label">Entradas</span><span class="totais-row-value green">${formatBRL(totalE)}</span></div>
       <div class="totais-row"><span class="totais-row-label">Saídas</span><span class="totais-row-value red">${formatBRL(totalS)}</span></div>
       <div class="totais-row"><span class="totais-row-label">Cartão</span><span class="totais-row-value purple">${formatBRL(totalC)}</span></div>
+      <div class="totais-row"><span class="totais-row-label">Economia</span><span class="totais-row-value" style="color:var(--economia)">${formatBRL(totalEco)}</span></div>
       <div class="totais-row"><span class="totais-row-label">Total de gastos</span><span class="totais-row-value red">${formatBRL(totalSaidas)}</span></div>
       <div class="totais-row"><span class="totais-row-label">Média diária</span><span class="totais-row-value accent">${formatBRL(mediaDiaria)}</span></div>
       <div class="totais-row"><span class="totais-row-label">Previsão diário</span><span class="totais-row-value">${formatBRL(getPrevisaoDiario())}</span></div>
@@ -486,12 +491,22 @@ function addPrevisaoItem() {
 function renderHorizonte() {
   const { currentMonth: m, currentYear: y } = state;
   const months = [];
-  for (let i = -1; i <= 4; i++) {
+  // Mostrar do mês anterior até dezembro do ano corrente (mínimo 6 meses)
+  const endMonth = 11; // dezembro
+  const endYear = y;
+  let totalMonths = (endYear * 12 + endMonth) - (y * 12 + m) + 2; // +2: inclui mês anterior e dezembro
+  if (totalMonths < 6) totalMonths = 6;
+  for (let i = -1; i < totalMonths - 1; i++) {
     let mm = m + i, yy = y;
-    if (mm < 0) { mm += 12; yy--; }
-    if (mm > 11) { mm -= 12; yy++; }
+    while (mm < 0) { mm += 12; yy--; }
+    while (mm > 11) { mm -= 12; yy++; }
     months.push({ m: mm, y: yy });
   }
+  // Cache computeDaySaldos per month to avoid recomputing
+  const saldosCache = {};
+  months.forEach(({m:mm, y:yy}) => {
+    saldosCache[monthKey(mm, yy)] = computeDaySaldos(mm, yy);
+  });
   let thead = '<tr><th>Dia</th>' + months.map(({m:mm,y:yy}) => `<th>${MONTHS_PT[mm]}/${String(yy).slice(2)}</th>`).join('') + '</tr>';
   let tbody = '';
   for (let d = 1; d <= 31; d++) {
@@ -499,7 +514,7 @@ function renderHorizonte() {
     months.forEach(({m:mm,y:yy}) => {
       if (d > daysInMonth(mm, yy)) { tbody += '<td></td>'; return; }
       const ds = dateStr(yy, mm, d);
-      const saldo = computeDaySaldos(mm, yy)[ds]?.saldo;
+      const saldo = saldosCache[monthKey(mm, yy)][ds]?.saldo;
       if (!saldo) { tbody += '<td class="zero">0</td>'; return; }
       const cls = saldo > 0 ? 'pos' : 'neg';
       const abbr = Math.abs(saldo) >= 1000 ? (saldo/1000).toFixed(1)+'K' : Math.round(saldo).toString();
@@ -539,7 +554,8 @@ function renderDayDetail() {
     const tag = getTag(tx.tagId);
     const isE = tx.type === 'entrada';
     const isC = tx.type === 'cartao';
-    const badge = isC ? '<span class="cartao-badge">Cartão</span>' : '';
+    const isEco = tx.isEconomia;
+    const badge = isC ? '<span class="cartao-badge">Cartão</span>' : (isEco ? '<span class="cartao-badge" style="background:#E0F2FE;color:var(--economia)">Economia</span>' : '');
     const subLabel = isC && tx.vencimento
       ? `Venc. ${tx.vencimento.split('-').reverse().join('/')}`
       : tag.name + (tx.recurring ? ' · 🔄' : '') + (tx.installmentNum && tx.installments ? ` · ${tx.installmentNum}/${tx.installments}` : '');
@@ -594,6 +610,7 @@ function openAddModal(ds, editId = null) {
   document.getElementById('amountInput').value = '';
   document.getElementById('descInput').value = '';
   document.getElementById('recurringCheck').checked = false;
+  document.getElementById('economiaCheck').checked = false;
   document.getElementById('parcelasInput').value = '12';
   document.getElementById('parcelasField').classList.add('hidden');
   document.getElementById('editingId').value = editId || '';
@@ -611,6 +628,9 @@ function openAddModal(ds, editId = null) {
         document.getElementById('vencimentoInput').value = tx.vencimento || today;
       } else {
         document.getElementById('dateInput').value = tx.date;
+      }
+      if (tx.isEconomia) {
+        document.getElementById('economiaCheck').checked = true;
       }
       if (tx.recurring) {
         document.getElementById('recurringCheck').checked = true;
@@ -707,6 +727,8 @@ function saveTransaction() {
   const groupId = isRecurring && installments > 1 ? uniqueId() : null;
   const baseDesc = document.getElementById('descInput').value.trim();
 
+  const isEconomia = document.getElementById('economiaCheck').checked;
+
   const baseTx = {
     id: state.editingId || uniqueId(),
     date, type: state.selectedType, amount,
@@ -718,6 +740,7 @@ function saveTransaction() {
     installments: isRecurring && !isSemFim ? installments : null,
     installmentNum: isRecurring ? 1 : null,
     semFim: isSemFim || false,
+    isEconomia: isEconomia,
     groupId,
     createdAt: new Date().toISOString(),
   };

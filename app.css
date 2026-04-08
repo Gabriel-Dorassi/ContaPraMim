@@ -13,6 +13,7 @@
   --green-bg: #F0FFF4;
   --green-row: #E8F5E9;
   --purple: #7C3AED;
+  --economia: #0EA5E9;
   --purple-light: #F5F3FF;
   --purple-row: #EDE9FE;
   --yellow-row: #FFFBEA;
@@ -96,6 +97,9 @@ html,body{height:100%;overflow:hidden;
 .entrada-dot{background:var(--green)}
 .diario-dot{background:var(--accent)}
 .cartao-dot{background:var(--purple)}
+.economia-dot{background:var(--economia)}
+.day-mid.mid-economia{color:var(--economia);font-weight:600}
+.toggle-switch input:checked + .toggle-slider.economia-slider{background:var(--economia)}
 
 /* ── Days List ── */
 .days-list{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
