@@ -101,15 +101,18 @@ function getInitialBalance(m, y) {
   if (storedInit) return storedInit.amount;
   const prevM = m === 0 ? 11 : m - 1;
   const prevY = m === 0 ? y - 1 : y;
-  let saldo = 0;
-  state.data.transactions
-    .filter(tx => tx.date.startsWith(monthKey(prevM, prevY)))
-    .forEach(tx => {
-      if (tx.isEconomia) saldo -= tx.amount;
-      else if (tx.type === 'entrada') saldo += tx.amount;
-      else if (tx.type === 'saida' || tx.type === 'cartao') saldo -= tx.amount;
-    });
-  return saldo;
+  // Checar se existe alguma transação no mês anterior ou antes
+  const hasPrevTx = state.data.transactions.some(tx => {
+    const txKey = tx.date.substring(0, 7);
+    const prevKey = monthKey(prevM, prevY);
+    return txKey <= prevKey;
+  });
+  if (!hasPrevTx) return 0;
+  // Acumular recursivamente: pegar o saldo do último dia do mês anterior
+  const prevSaldos = computeDaySaldos(prevM, prevY);
+  const lastDay = daysInMonth(prevM, prevY);
+  const lastDayStr = dateStr(prevY, prevM, lastDay);
+  return prevSaldos[lastDayStr]?.saldo || 0;
 }
 
 function computeDaySaldos(m, y) {
